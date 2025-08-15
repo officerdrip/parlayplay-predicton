@@ -35,8 +35,20 @@ st.markdown(
         background:#0f172a; border:1px solid #1f2937; border-radius:14px; padding:16px;
       }
       .ghost { color:#9ca3af; }
-      .btn { background:#16c79a; color:white; border:none; padding:10px 14px; border-radius:8px; font-weight:600;}
-      .btn:hover { background:#13a883; }
+      .stButton>button {
+          background:#16c79a;
+          color:white;
+          border:none;
+          padding:10px 14px;
+          border-radius:8px;
+          font-weight:600;
+          width:100%;
+      }
+      .stButton>button:hover {
+          background:#13a883;
+          color:white;
+          border:none;
+      }
     </style>
     """,
     unsafe_allow_html=True,
@@ -64,12 +76,12 @@ BASE = {
 }
 
 ENDPOINTS = {
-    "NBA": {"games_by_date": "/GamesByDate/{date}", "players_by_team": "/Players/{team}", "player_gamelogs_by_date": "/PlayerGameStatsByDate/{date}", "season_param_style": "year"},
-    "WNBA": {"games_by_date": "/GamesByDate/{date}", "players_by_team": "/Players/{team}", "player_gamelogs_by_date": "/PlayerGameStatsByDate/{date}", "season_param_style": "year"},
-    "NFL": {"games_by_date": "/SchedulesBasic/{season}", "players_by_team": "/Players/{team}", "player_gamelogs_by_date": "/PlayerGameStatsByDate/{date}", "season_param_style": "year"},
-    "MLB": {"games_by_date": "/GamesByDate/{date}", "players_by_team": "/Players/{team}", "player_gamelogs_by_date": "/PlayerGameStatsByDate/{date}", "season_param_style": "year"},
-    "CFB": {"games_by_date": "/GamesByDate/{date}", "players_by_team": "/PlayersByTeam/{teamid}", "player_gamelogs_by_date": "/PlayerGameStatsByDate/{date}", "season_param_style": "year"},
-    "CBB": {"games_by_date": "/GamesByDate/{date}", "players_by_team": "/PlayersByTeam/{teamid}", "player_gamelogs_by_date": "/PlayerGameStatsByDate/{date}", "season_param_style": "year"},
+    "NBA": {"games_by_date": "/GamesByDate/{date}", "players_by_team": "/Players/{team}", "player_gamelogs_by_date": "/PlayerGameStatsByDate/{date}"},
+    "WNBA": {"games_by_date": "/GamesByDate/{date}", "players_by_team": "/Players/{team}", "player_gamelogs_by_date": "/PlayerGameStatsByDate/{date}"},
+    "NFL": {"games_by_date": "/SchedulesBasic/{season}", "players_by_team": "/Players/{team}", "player_gamelogs_by_date": "/PlayerGameStatsByDate/{date}"},
+    "MLB": {"games_by_date": "/GamesByDate/{date}", "players_by_team": "/Players/{team}", "player_gamelogs_by_date": "/PlayerGameStatsByDate/{date}"},
+    "CFB": {"games_by_date": "/GamesByDate/{date}", "players_by_team": "/PlayersByTeam/{teamid}", "player_gamelogs_by_date": "/PlayerGameStatsByDate/{date}"},
+    "CBB": {"games_by_date": "/GamesByDate/{date}", "players_by_team": "/PlayersByTeam/{teamid}", "player_gamelogs_by_date": "/PlayerGameStatsByDate/{date}"},
 }
 
 STAT_FIELDS = {
@@ -93,7 +105,7 @@ def api_get(url: str, params: Optional[Dict] = None) -> Optional[List[Dict]]:
         elif r.status_code == 401:
             st.warning("Unauthorized: Your API key does not have access to this league.")
         elif r.status_code == 404:
-            st.warning("Endpoint not found. Check if WNBA is available in your plan.")
+            st.warning("Endpoint not found. Check if this sport is available in your plan.")
         elif r.status_code == 429:
             st.warning("Rate limit reached. Please try again shortly.")
         else:
@@ -108,7 +120,7 @@ def ymd(date: dt.date) -> str:
 def safe_get(dic: Dict, key: str, default=None):
     return dic.get(key, default) if isinstance(dic, dict) else default
 
-def recent_dates(window_days: int = 30) -> List[str]:
+def recent_dates(window_days: int) -> List[str]:
     today = dt.date.today()
     return [ymd(today - dt.timedelta(days=i)) for i in range(window_days)]
 
@@ -120,58 +132,148 @@ def infer_team_keys(sport: str, game: Dict) -> Dict:
 def player_name(rec: Dict) -> str:
     for k in ("Name","FullName","FirstName"):
         if k in rec and rec[k]:
-            return rec[k] if k!="FirstName" else f"{rec['FirstName']} {rec.get('LastName','')}".strip()
+            name = rec[k] if k != "FirstName" else f"{rec['FirstName']} {rec.get('LastName','')}".strip()
+            pos = f" ({rec.get('Position')})" if rec.get('Position') else ""
+            return f"{name}{pos}"
     return rec.get("Player","Unknown")
 
 def extract_stat(rec: Dict, field: str) -> Optional[float]:
     v = rec.get(field)
     try:
         return float(v) if v is not None else None
-    except Exception:
+    except (ValueError, TypeError):
         return None
 
 def prob_over(sample: List[float], line: float) -> float:
     if not sample: return 0.0
-    arr = np.array(sample,dtype=float)
+    arr = np.array(sample, dtype=float)
     return float(np.mean(arr > line))
+
+@st.cache_data(show_spinner=False, ttl=300)
+def get_player_gamelogs(sport: str, player_id: int, window_days: int) -> List[Dict]:
+    """Fetches all game logs for a player over a given window of days."""
+    logs = []
+    dates_to_check = recent_dates(window_days)
+    base = BASE[sport]["stats"]
+    endpoint = ENDPOINTS[sport]["player_gamelogs_by_date"]
+
+    for date_str in dates_to_check:
+        url = base + endpoint.format(date=date_str)
+        daily_stats = api_get(url)
+        if daily_stats:
+            player_stats = [s for s in daily_stats if s.get("PlayerID") == player_id]
+            logs.extend(player_stats)
+    return logs
 
 # -------------------------
 # Sidebar
 # -------------------------
-st.sidebar.markdown("### Sport & Date")
-sport = st.sidebar.selectbox("Sport", ["NBA","WNBA","NFL","MLB","CFB","CBB"])
+st.sidebar.markdown("### ⚙️ Controls")
+sport = st.sidebar.selectbox("Sport", ["NBA", "WNBA", "NFL", "MLB", "CFB", "CBB"])
 target_date = st.sidebar.date_input("Game Date", value=dt.date.today())
-window_days = st.sidebar.slider("Recent form window (days)",7,60,30)
+window_days = st.sidebar.slider("Recent Form Window (Days)", 7, 90, 30)
+
 st.sidebar.markdown("---")
-st.sidebar.caption("Tip: Store your SportsDataIO key in `.streamlit/secrets.toml` as `SPORTSIO_KEY`.")
+st.sidebar.info("Tip: Store your SportsDataIO API key in `.streamlit/secrets.toml` as `SPORTSIO_KEY` to avoid entering it.")
 
 # -------------------------
-# Pull games
+# Main App
 # -------------------------
 st.markdown("## 🎯 ParlayPlays • Player Prop Predictor")
-st.markdown("<div class='ghost'>Select a sport, pick a game, choose a player & stat, then enter a line to estimate Over/Under probability.</div>", unsafe_allow_html=True)
+st.markdown("<div class='ghost'>Select a sport, pick a game, choose a player & stat, then enter a line to estimate Over/Under probability.</div><br>", unsafe_allow_html=True)
 
+# --- Step 1: Fetch and select a game ---
 with st.spinner("Loading games..."):
     if "{date}" in ENDPOINTS[sport]["games_by_date"]:
         url = BASE[sport]["scores"] + ENDPOINTS[sport]["games_by_date"].format(date=ymd(target_date))
-    else:
+    else: # Handle season-based endpoints like NFL
         url = BASE[sport]["scores"] + ENDPOINTS[sport]["games_by_date"].format(season=dt.date.today().year)
     games = api_get(url) or []
 
 if not games:
-    st.info("No games found. Check date or API access.")
+    st.info(f"No {sport} games found for {target_date.strftime('%b %d, %Y')}. Check the date or your API access.")
     st.stop()
 
 def game_lab(game: Dict) -> str:
-    """Formats a game dictionary into a readable label for a selectbox."""
     keys = infer_team_keys(sport, game)
-    away_team = keys.get("away_display", "Away")
-    home_team = keys.get("home_display", "Home")
-    return f"{away_team} @ {home_team}"
+    return f"{keys.get('away_display', 'Away')} @ {keys.get('home_display', 'Home')}"
 
-# --- The rest of your Streamlit app logic would continue here ---
-# Example:
-#
-# selected_game = st.selectbox("Select a game", games, format_func=game_lab)
-# if selected_game:
-#     # ... logic to fetch players for the selected game ...
+c1, c2, c3, c4 = st.columns(4)
+selected_game = c1.selectbox("Select Game", games, format_func=game_lab, label_visibility="collapsed")
+
+if selected_game:
+    # --- Step 2: Fetch and select a player ---
+    with st.spinner(f"Loading players for {game_lab(selected_game)}..."):
+        team_keys = infer_team_keys(sport, selected_game)
+        players = []
+        for team_key in [team_keys["home_key"], team_keys["away_key"]]:
+            if team_key:
+                endpoint = ENDPOINTS[sport]["players_by_team"]
+                url = BASE[sport]["scores"] + endpoint.format(team=team_key, teamid=team_key)
+                team_players = api_get(url)
+                if team_players:
+                    players.extend(team_players)
+    
+    # Sort players by name for easier selection
+    players = sorted(players, key=lambda p: player_name(p))
+    selected_player = c2.selectbox("Select Player", players, format_func=player_name, label_visibility="collapsed", index=None, placeholder="Select Player")
+
+    if selected_player:
+        # --- Step 3: Select a stat and enter a line ---
+        stat_options = list(STAT_FIELDS.get(sport, {}).keys())
+        selected_stat_display = c3.selectbox("Select Stat", stat_options, label_visibility="collapsed", index=None, placeholder="Select Stat")
+        
+        line = c4.number_input("Enter Line", min_value=0.0, step=0.5, value=0.5, label_visibility="collapsed")
+        
+        # --- Step 4: Run Analysis ---
+        st.write("") # Spacer
+        run_analysis = st.button("📈 Run Analysis")
+
+        if run_analysis and selected_stat_display and selected_player:
+            player_id = selected_player.get("PlayerID")
+            stat_field = STAT_FIELDS[sport][selected_stat_display]
+            
+            with st.spinner(f"Analyzing {player_name(selected_player)}'s recent performance..."):
+                game_logs = get_player_gamelogs(sport, player_id, window_days)
+                
+                if not game_logs:
+                    st.warning(f"No recent game logs found for {player_name(selected_player)} in the last {window_days} days.")
+                    st.stop()
+
+                # Process logs into a DataFrame
+                log_data = []
+                for log in game_logs:
+                    stat_val = extract_stat(log, stat_field)
+                    if stat_val is not None:
+                        log_data.append({
+                            "Date": log.get("Day", "").split("T")[0],
+                            "Opponent": log.get("Opponent", "N/A"),
+                            selected_stat_display: stat_val
+                        })
+                
+                if not log_data:
+                    st.warning(f"No data found for the stat '{selected_stat_display}'. The player may not have recorded this stat recently.")
+                    st.stop()
+                
+                df = pd.DataFrame(log_data)
+                df = df.sort_values(by="Date", ascending=False).reset_index(drop=True)
+                
+                # --- Step 5: Display Results ---
+                st.markdown(f"#### Analysis for {player_name(selected_player)} - **{selected_stat_display}**")
+                
+                res1, res2, res3 = st.columns(3)
+                
+                recent_stats = df[selected_stat_display].dropna().tolist()
+                avg_stat = np.mean(recent_stats) if recent_stats else 0
+                prob = prob_over(recent_stats, line)
+                hit_rate_pct = f"{prob:.0%}"
+                
+                # Color code the probability metric
+                prob_color = "good" if prob >= 0.55 else "bad" if prob <= 0.45 else "neutral"
+
+                res1.metric(f"Avg (Last {len(recent_stats)} Games)", f"{avg_stat:.2f}")
+                res2.markdown(f"<div class='card'><div class='ghost'>Prob. Over {line}</div> <div class='metric-{prob_color}'>{hit_rate_pct}</div></div>", unsafe_allow_html=True)
+                res3.metric("Games Over Line", f"{sum(s > line for s in recent_stats)} of {len(recent_stats)}")
+                
+                st.markdown("---")
+                st.dataframe(df, use_container_width=True)
