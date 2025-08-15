@@ -25,7 +25,7 @@ st.markdown(
     """
     <style>
       .metric-good {color:#16c79a; font-weight:700;}
-      .metric-bad  {color:#e94560; font-weight:700;}
+      .metric-bad {color:#e94560; font-weight:700;}
       .pill {
         display:inline-block; padding:6px 10px; border-radius:999px;
         background:#1f2937; border:1px solid #334155; font-size:12px; color:#e5e7eb;
@@ -162,4 +162,16 @@ if not games:
     st.info("No games found. Check date or API access.")
     st.stop()
 
-def game_lab_
+def game_lab(game: Dict) -> str:
+    """Formats a game dictionary into a readable label for a selectbox."""
+    keys = infer_team_keys(sport, game)
+    away_team = keys.get("away_display", "Away")
+    home_team = keys.get("home_display", "Home")
+    return f"{away_team} @ {home_team}"
+
+# --- The rest of your Streamlit app logic would continue here ---
+# Example:
+#
+# selected_game = st.selectbox("Select a game", games, format_func=game_lab)
+# if selected_game:
+#     # ... logic to fetch players for the selected game ...
