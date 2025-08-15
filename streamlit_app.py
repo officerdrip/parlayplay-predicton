@@ -1,193 +1,398 @@
 # streamlit_app.py
-
-import streamlit as st
-import pandas as pd
-import numpy as np
 import os
+import datetime as dt
+from typing import Dict, List, Optional
 
-# Try importing dependencies with graceful fallback
-try:
-    from sklearn.ensemble import RandomForestClassifier
-    from sklearn.preprocessing import StandardScaler
-except ModuleNotFoundError as e:
-    st.error("⚠ Missing required library: `scikit-learn`.\n\n"
-             "If running locally, install with:\n`pip install scikit-learn`")
-    st.stop()
+import numpy as np
+import pandas as pd
+import requests
+import streamlit as st
 
-import joblib
-
-# --- PAGE CONFIG ---
+# -------------------------
+# Page Config + Theme
+# -------------------------
 st.set_page_config(
-    page_title="ParlayPlay Predictor",
+    page_title="ParlayPlays • Player Prop Predictor",
     page_icon="🎯",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded",
 )
 
-# --- CSS ---
-st.markdown("""<style>
-/* keep your existing CSS here... */
-</style>""", unsafe_allow_html=True)
+# -------------------------
+# Simple CSS polish
+# -------------------------
+st.markdown(
+    """
+    <style>
+      .metric-good {color:#16c79a; font-weight:700;}
+      .metric-bad  {color:#e94560; font-weight:700;}
+      .pill {
+        display:inline-block; padding:6px 10px; border-radius:999px;
+        background:#1f2937; border:1px solid #334155; font-size:12px; color:#e5e7eb;
+        margin-right:6px;
+      }
+      .card {
+        background:#0f172a; border:1px solid #1f2937; border-radius:14px; padding:16px;
+      }
+      .ghost { color:#9ca3af; }
+      .btn { background:#16c79a; color:white; border:none; padding:10px 14px; border-radius:8px; font-weight:600;}
+      .btn:hover { background:#13a883; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
-# --- TITLE ---
-st.markdown("<h1 style='text-align: center; color: #16c79a;'>🎯 PARLAYPLAY PREDICTOR</h1>", unsafe_allow_html=True)
-st.markdown("<h3 style='text-align: center; color: #e94560;'>Make Winning Picks with 85%+ Accuracy</h3>", unsafe_allow_html=True)
+# -------------------------
+# Config / Secrets
+# -------------------------
+# Put your SportsDataIO API key in .streamlit/secrets.toml as SPORTSIO_KEY="..."
+API_KEY = st.secrets.get("SPORTSIO_KEY", os.getenv("SPORTSIO_KEY", ""))
 
-# --- SIDEBAR ---
-st.sidebar.title("📘 User Guide")
-st.sidebar.markdown("<div class='section-header'>How to Use</div>", unsafe_allow_html=True)
-st.sidebar.markdown("""
-1. **Enter Game Parameters**
-2. **Adjust Game Conditions**
-3. **Click Predict**
-""")
-
-# --- MODEL CLASS ---
-class ParlayPlayPredictor:
-    def __init__(self):
-        self.model = None
-        self.scaler = None
-        self.is_trained = False
-        self.feature_names = [
-            'team1_ppg', 'team2_ppg', 'team1_def_ppg', 'team2_def_ppg',
-            'home_advantage', 'injury_impact', 'weather_factor',
-            'rest_days_team1', 'rest_days_team2', 'recent_form_team1',
-            'recent_form_team2', 'total_line', 'over_under_trend',
-            'head_to_head', 'public_betting', 'sharp_money'
-        ]
-        
-    def generate_model(self):
-        np.random.seed(42)
-        n_samples = 15000
-        data = {name: np.random.uniform(0, 1, n_samples) for name in self.feature_names}
-        data['team1_ppg'] = np.random.normal(24.5, 4, n_samples)
-        data['team2_ppg'] = np.random.normal(24.5, 4, n_samples)
-        data['team1_def_ppg'] = np.random.normal(22, 3.5, n_samples)
-        data['team2_def_ppg'] = np.random.normal(22, 3.5, n_samples)
-        data['home_advantage'] = np.random.choice([0, 1], n_samples)
-        data['rest_days_team1'] = np.random.randint(1, 8, n_samples)
-        data['rest_days_team2'] = np.random.randint(1, 8, n_samples)
-        data['total_line'] = np.random.normal(44.5, 5, n_samples)
-
-        combined_offense = data['team1_ppg'] + data['team2_ppg']
-        combined_defense = data['team1_def_ppg'] + data['team2_def_ppg']
-        form_factor = (data['recent_form_team1'] + data['recent_form_team2']) / 2
-        
-        over_prob = (
-            0.25 * np.clip((combined_offense - 40) / 20, -1, 1) +
-            0.20 * np.clip((1 - combined_defense / 44), -1, 1) +
-            0.15 * data['home_advantage'] +
-            0.10 * (1 - data['injury_impact']) +
-            0.10 * form_factor +
-            0.05 * (1 - data['weather_factor']) +
-            0.05 * data['over_under_trend'] +
-            0.05 * (1 - data['public_betting']) +
-            0.05 * data['sharp_money'] +
-            0.05 * np.random.normal(0, 0.1, n_samples)
-        )
-        
-        over_prob = (over_prob + 1) / 2
-        over_prob = np.clip(over_prob, 0, 1)
-        data['outcome'] = np.random.binomial(1, over_prob, n_samples)
-        
-        df = pd.DataFrame(data)
-        X = df[self.feature_names]
-        y = df['outcome']
-        
-        self.scaler = StandardScaler()
-        X_scaled = self.scaler.fit_transform(X)
-        
-        self.model = RandomForestClassifier(
-            n_estimators=300,
-            max_depth=20,
-            min_samples_split=4,
-            random_state=42,
-            class_weight='balanced'
-        )
-        self.model.fit(X_scaled, y)
-        self.is_trained = True
-    
-    def predict(self, features):
-        if not self.is_trained:
-            self.generate_model()
-        if len(features.shape) == 1:
-            features = features.reshape(1, -1)
-        features_scaled = self.scaler.transform(features)
-        prediction = self.model.predict(features_scaled)[0]
-        probability = self.model.predict_proba(features_scaled)[0]
-        return prediction, probability
-
-@st.cache_resource
-def load_predictor():
-    p = ParlayPlayPredictor()
-    p.generate_model()
-    return p
-
-# Load model safely
-try:
-    predictor = load_predictor()
-except Exception as e:
-    st.error(f"🚨 Error loading model: {e}")
+if not API_KEY:
+    st.error("Missing API key. Add SPORTSIO_KEY to `.streamlit/secrets.toml` or as an environment variable.")
     st.stop()
 
-# --- TABS ---
-tab1, tab2 = st.tabs(["🎮 Game Parameters", "📊 Prediction Results"])
+HEADERS = {"Ocp-Apim-Subscription-Key": API_KEY}
 
-with tab1:
+# Base URLs per league (Scores + Stats families)
+BASE = {
+    "NBA": {"scores": "https://api.sportsdata.io/v3/nba/scores/json", "stats": "https://api.sportsdata.io/v3/nba/stats/json"},
+    "NFL": {"scores": "https://api.sportsdata.io/v3/nfl/scores/json", "stats": "https://api.sportsdata.io/v3/nfl/stats/json"},
+    "MLB": {"scores": "https://api.sportsdata.io/v3/mlb/scores/json", "stats": "https://api.sportsdata.io/v3/mlb/stats/json"},
+    "CFB": {"scores": "https://api.sportsdata.io/v3/cfb/scores/json", "stats": "https://api.sportsdata.io/v3/cfb/stats/json"},
+    "CBB": {"scores": "https://api.sportsdata.io/v3/cbb/scores/json", "stats": "https://api.sportsdata.io/v3/cbb/stats/json"},
+}
+
+# Which endpoints we’ll call for:
+# - games by date
+# - players by team
+# - player game logs by date (or by season)
+ENDPOINTS = {
+    "NBA": {
+        "games_by_date": "/GamesByDate/{date}",               # yyyy-mm-dd
+        "players_by_team": "/Players/{team}",                 # team abbr
+        "player_gamelogs_by_date": "/PlayerGameStatsByDate/{date}",  # per date; we'll aggregate a window
+        "season_param_style": "year"  # not used here but left for future
+    },
+    "NFL": {
+        "games_by_date": "/SchedulesBasic/{season}",          # fallback weekly would be ScoresByWeek/{season}/{week}
+        "players_by_team": "/Players/{team}",
+        "player_gamelogs_by_date": "/PlayerGameStatsByDate/{date}",
+        "season_param_style": "year"
+    },
+    "MLB": {
+        "games_by_date": "/GamesByDate/{date}",
+        "players_by_team": "/Players/{team}",
+        "player_gamelogs_by_date": "/PlayerGameStatsByDate/{date}",
+        "season_param_style": "year"
+    },
+    "CFB": {
+        "games_by_date": "/GamesByDate/{date}",
+        "players_by_team": "/PlayersByTeam/{teamid}",         # college keys differ; we’ll handle dynamically
+        "player_gamelogs_by_date": "/PlayerGameStatsByDate/{date}",
+        "season_param_style": "year"
+    },
+    "CBB": {
+        "games_by_date": "/GamesByDate/{date}",
+        "players_by_team": "/PlayersByTeam/{teamid}",
+        "player_gamelogs_by_date": "/PlayerGameStatsByDate/{date}",
+        "season_param_style": "year"
+    },
+}
+
+# Stat field mapping per sport for a simple first version
+STAT_FIELDS = {
+    "NBA": {
+        "Points": "Points",
+        "Rebounds": "Rebounds",
+        "Assists": "Assists",
+        "FG Made": "FieldGoalsMade",
+        "3PT Made": "ThreePointersMade",
+        "Blocks": "BlockedShots",
+        "Steals": "Steals",
+    },
+    "NFL": {
+        "Passing Yds": "PassingYards",
+        "Rushing Yds": "RushingYards",
+        "Receiving Yds": "ReceivingYards",
+        "Receptions": "Receptions",
+        "Rush Attempts": "RushingAttempts",
+    },
+    "MLB": {
+        "Hits": "Hits",
+        "Total Bases": "TotalBases",
+        "Home Runs": "HomeRuns",
+        "Runs": "Runs",
+        "RBIs": "RunsBattedIn",
+        "Strikeouts (Batter)": "Strikeouts",     # hitter K
+        "Strikeouts (Pitcher)": "PitcherStrikeouts"  # may require pitcher-only filter
+    },
+    "CFB": {
+        "Passing Yds": "PassingYards",
+        "Rushing Yds": "RushingYards",
+        "Receiving Yds": "ReceivingYards",
+        "Receptions": "Receptions",
+    },
+    "CBB": {
+        "Points": "Points",
+        "Rebounds": "Rebounds",
+        "Assists": "Assists",
+        "3PT Made": "ThreePointersMade",
+    },
+}
+
+# -------------------------
+# Helpers
+# -------------------------
+@st.cache_data(show_spinner=False, ttl=300)
+def api_get(url: str, params: Optional[Dict] = None) -> Optional[List[Dict]]:
     try:
-        col1, col2 = st.columns(2)
-        with col1:
-            team1_ppg = st.number_input("Team 1 PPG", 0.0, 100.0, 24.5, 0.5)
-            team1_def_ppg = st.number_input("Team 1 Defensive PPG", 0.0, 100.0, 22.0, 0.5)
-            rest_days_team1 = st.slider("Rest Days Team 1", 1, 10, 3)
-            recent_form_team1 = st.slider("Recent Form Team 1 (0-1)", 0.0, 1.0, 0.7)
-        with col2:
-            team2_ppg = st.number_input("Team 2 PPG", 0.0, 100.0, 24.5, 0.5)
-            team2_def_ppg = st.number_input("Team 2 Defensive PPG", 0.0, 100.0, 22.0, 0.5)
-            rest_days_team2 = st.slider("Rest Days Team 2", 1, 10, 4)
-            recent_form_team2 = st.slider("Recent Form Team 2 (0-1)", 0.0, 1.0, 0.6)
+        r = requests.get(url, headers=HEADERS, params=params, timeout=20)
+        if r.status_code == 200:
+            return r.json()
+        elif r.status_code == 429:
+            st.warning("Rate limit reached. Please try again in a moment.")
+        else:
+            st.error(f"API error {r.status_code}: {r.text[:200]}")
+    except requests.RequestException as e:
+        st.error(f"Network error: {e}")
+    return None
 
-        st.markdown("---")
-        home_advantage = st.selectbox("Home Advantage", [0, 1], format_func=lambda x: "No" if x == 0 else "Yes")
-        injury_impact = st.slider("Injury Impact (0-1)", 0.0, 1.0, 0.3)
-        weather_factor = st.slider("Weather Factor (0-1)", 0.0, 1.0, 0.2)
-        total_line = st.number_input("Total Line", 0.0, 100.0, 44.5, 0.5)
-        over_under_trend = st.slider("Over/Under Trend (0-1)", 0.0, 1.0, 0.6)
-        head_to_head = st.slider("Head-to-Head Record (0-1)", 0.0, 1.0, 0.5)
-        public_betting = st.slider("Public Betting (0-1)", 0.0, 1.0, 0.4)
-        sharp_money = st.slider("Sharp Money Flow (0-1)", 0.0, 1.0, 0.7)
+def ymd(date: dt.date) -> str:
+    return date.strftime("%Y-%m-%d")
 
-        if st.button("🎯 PREDICT WINNING PICK"):
-            with st.spinner("Running prediction..."):
-                try:
-                    input_values = np.array([
-                        team1_ppg, team2_ppg, team1_def_ppg, team2_def_ppg,
-                        home_advantage, injury_impact, weather_factor,
-                        rest_days_team1, rest_days_team2, recent_form_team1,
-                        recent_form_team2, total_line, over_under_trend,
-                        head_to_head, public_betting, sharp_money
-                    ])
-                    prediction, probability = predictor.predict(input_values)
-                    st.session_state.prediction = prediction
-                    st.session_state.probability = probability
-                    st.session_state.confidence = max(probability) * 100
-                    st.session_state.outcome = "OVER" if prediction == 1 else "UNDER"
-                    st.experimental_rerun()
-                except Exception as e:
-                    st.error(f"Prediction failed: {e}")
-    except Exception as e:
-        st.error(f"⚠ UI load error: {e}")
+def safe_get(dic: Dict, key: str, default=None):
+    return dic.get(key, default) if isinstance(dic, dict) else default
 
-with tab2:
-    if 'prediction' in st.session_state:
-        outcome = st.session_state.outcome
-        confidence = st.session_state.confidence
-        probability = st.session_state.probability
-        st.markdown(f"## Prediction: **{outcome}** with {confidence:.1f}% confidence")
-        st.write(f"Under Probability: {probability[0]*100:.1f}%")
-        st.write(f"Over Probability: {probability[1]*100:.1f}%")
+def recent_dates(window_days: int = 30) -> List[str]:
+    today = dt.date.today()
+    return [ymd(today - dt.timedelta(days=i)) for i in range(window_days)]
+
+def infer_team_keys(sport: str, game: Dict) -> Dict:
+    """Return dict with display names + IDs/Abbr needed for downstream."""
+    if sport in ("NBA", "NFL", "MLB"):
+        return {
+            "home_display": safe_get(game, "HomeTeam") or safe_get(game, "HomeTeamName"),
+            "away_display": safe_get(game, "AwayTeam") or safe_get(game, "AwayTeamName"),
+            "home_key": safe_get(game, "HomeTeam"),
+            "away_key": safe_get(game, "AwayTeam"),
+        }
+    # College feeds often use TeamID + Team fields
+    return {
+        "home_display": safe_get(game, "HomeTeam") or safe_get(game, "HomeTeamName"),
+        "away_display": safe_get(game, "AwayTeam") or safe_get(game, "AwayTeamName"),
+        "home_key": safe_get(game, "HomeTeamID") or safe_get(game, "HomeTeam"),
+        "away_key": safe_get(game, "AwayTeamID") or safe_get(game, "AwayTeam"),
+    }
+
+def player_name(rec: Dict) -> str:
+    for k in ("Name", "FullName", "FirstName"):
+        if k in rec and rec[k]:
+            return rec[k] if k != "FirstName" else f"{rec['FirstName']} {rec.get('LastName','')}".strip()
+    # fallback
+    return rec.get("Player", "Unknown")
+
+def extract_stat(rec: Dict, field: str) -> Optional[float]:
+    v = rec.get(field)
+    if v is None:
+        return None
+    try:
+        return float(v)
+    except Exception:
+        return None
+
+def prob_over(sample: List[float], line: float) -> float:
+    if not sample:
+        return 0.0
+    arr = np.array(sample, dtype=float)
+    return float(np.mean(arr > line))
+
+# -------------------------
+# Sidebar: Sport / Date
+# -------------------------
+st.sidebar.markdown("### Sport & Date")
+sport = st.sidebar.selectbox("Sport", ["NBA", "NFL", "MLB", "CFB", "CBB"])
+target_date = st.sidebar.date_input("Game Date", value=dt.date.today())
+window_days = st.sidebar.slider("Recent form window (days)", 7, 60, 30, help="We’ll pull player game logs across this window.")
+
+st.sidebar.markdown("---")
+st.sidebar.caption("Tip: Store your SportsDataIO key in `.streamlit/secrets.toml` as `SPORTSIO_KEY`.")
+
+# -------------------------
+# Pull Games
+# -------------------------
+st.markdown("## 🎯 ParlayPlays • Player Prop Predictor")
+st.markdown(
+    "<div class='ghost'>Select a sport, pick a game, choose a player & stat, then enter a line to estimate Over/Under probability.</div>",
+    unsafe_allow_html=True,
+)
+
+with st.spinner("Loading games..."):
+    if "{date}" in ENDPOINTS[sport]["games_by_date"]:
+        url = BASE[sport]["scores"] + ENDPOINTS[sport]["games_by_date"].format(date=ymd(target_date))
     else:
-        st.info("👈 Enter game parameters and click 'PREDICT WINNING PICK' to see results")
+        # basic season fallback (e.g., NFL SchedulesBasic/{season})
+        url = BASE[sport]["scores"] + ENDPOINTS[sport]["games_by_date"].format(season=dt.date.today().year)
+    games = api_get(url) or []
 
-st.markdown("---")
-st.markdown("<div style='text-align: center; color: #aaa;'>ParlayPlay Predictor v2.1 | Accuracy: ~85% | For Entertainment Only</div>", unsafe_allow_html=True)
+if not games:
+    st.info("No games found for this selection. Try another date.")
+    st.stop()
+
+# Build a selector
+def game_label(g: Dict) -> str:
+    home = safe_get(g, "HomeTeam") or safe_get(g, "HomeTeamName") or "HOME"
+    away = safe_get(g, "AwayTeam") or safe_get(g, "AwayTeamName") or "AWAY"
+    ts = safe_get(g, "DateTime") or safe_get(g, "Day") or safe_get(g, "Date")
+    ts = str(ts)[:16].replace("T", " ")
+    return f"{away} @ {home}  •  {ts}"
+
+game_idx = st.selectbox("Upcoming Games", list(range(len(games))), format_func=lambda i: game_label(games[i]))
+game = games[game_idx]
+keys = infer_team_keys(sport, game)
+
+# -------------------------
+# Team → Players
+# -------------------------
+st.markdown("### Pick Team & Player")
+
+col_team, col_player = st.columns(2)
+
+with col_team:
+    team_choice = st.radio(
+        "Team",
+        [f"{keys['away_display']} (Away)", f"{keys['home_display']} (Home)"]
+    )
+team_key = keys["away_key"] if "Away" in team_choice else keys["home_key"]
+
+# Different college vs pro endpoints
+players_endpoint = ENDPOINTS[sport]["players_by_team"]
+if "{teamid}" in players_endpoint:
+    url_players = BASE[sport]["scores"] + players_endpoint.format(teamid=team_key)
+else:
+    url_players = BASE[sport]["scores"] + players_endpoint.format(team=team_key)
+
+with st.spinner("Loading roster..."):
+    roster = api_get(url_players) or []
+
+if not roster:
+    st.warning("No roster found for this team.")
+    st.stop()
+
+with col_player:
+    player_idx = st.selectbox(
+        "Player",
+        list(range(len(roster))),
+        format_func=lambda i: player_name(roster[i]),
+        index=0,
+    )
+player = roster[player_idx]
+player_id = player.get("PlayerID") or player.get("GlobalPlayerID") or player.get("ID")
+
+# -------------------------
+# Stat & Line
+# -------------------------
+st.markdown("### Choose Stat & Line")
+
+valid_stats = STAT_FIELDS[sport]
+stat_choice = st.selectbox("Stat", list(valid_stats.keys()))
+stat_field = valid_stats[stat_choice]
+
+line_value = st.number_input("Prop Line", value=20.5 if sport in ("NBA", "CBB") else 60.5, step=0.5)
+
+# -------------------------
+# Gather recent game logs across a rolling window of dates
+# -------------------------
+st.markdown("### Results")
+
+def collect_player_logs_by_date(sport: str, days: int) -> pd.DataFrame:
+    rows = []
+    for d in recent_dates(days):
+        url_logs = BASE[sport]["stats"] + ENDPOINTS[sport]["player_gamelogs_by_date"].format(date=d)
+        payload = api_get(url_logs) or []
+        # Filters are league-specific; we’ll filter by PlayerID if present
+        for rec in payload:
+            pid = rec.get("PlayerID") or rec.get("GlobalPlayerID") or rec.get("ID")
+            if pid == player_id:
+                rows.append(rec)
+    return pd.DataFrame(rows)
+
+with st.spinner("Pulling recent game logs..."):
+    df_logs = collect_player_logs_by_date(sport, window_days)
+
+if df_logs.empty:
+    st.warning("No recent logs found for this player in the selected window. Try expanding the window or pick another player/stat.")
+    st.stop()
+
+# Extract series for the chosen stat
+values = []
+for _, r in df_logs.iterrows():
+    v = extract_stat(r.to_dict(), stat_field)
+    if v is not None:
+        values.append(v)
+
+if not values:
+    st.warning("This stat isn’t available for the selected player. Try another stat.")
+    st.stop()
+
+arr = np.array(values, dtype=float)
+p_over = prob_over(values, line_value)
+p_under = 1.0 - p_over
+
+# Basic summary metrics
+mean_v = float(np.mean(arr))
+median_v = float(np.median(arr))
+stdev_v = float(np.std(arr, ddof=1)) if len(arr) > 1 else 0.0
+
+# -------------------------
+# Display
+# -------------------------
+c1, c2, c3, c4 = st.columns(4)
+c1.metric("Sample Size", len(arr))
+c2.markdown(f"**Avg {stat_choice}**<br><span class='metric-good'>{mean_v:.2f}</span>", unsafe_allow_html=True)
+c3.markdown(f"**Median**<br><span class='metric-good'>{median_v:.2f}</span>", unsafe_allow_html=True)
+c4.markdown(f"**Std Dev**<br><span class='ghost'>{stdev_v:.2f}</span>", unsafe_allow_html=True)
+
+st.markdown(
+    f"""
+    <div class='card'>
+      <div class='pill'>Prop: {stat_choice}</div>
+      <div class='pill'>Line: {line_value:g}</div>
+      <div class='pill'>Window: last {window_days} days</div>
+      <h3 style='margin-top:10px;'>Prediction</h3>
+      <div>Over Probability: <span class='metric-{"good" if p_over>=0.5 else "bad"}'>{p_over*100:.1f}%</span></div>
+      <div>Under Probability: <span class='metric-{"good" if p_under>0.5 else "bad"}'>{p_under*100:.1f}%</span></div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+# Small distribution preview (no external plotting libs; simple text histogram)
+hist_counts, bin_edges = np.histogram(arr, bins=min(12, max(6, int(np.sqrt(len(arr))))))  # Sturges-ish
+hist_lines = []
+max_count = hist_counts.max() if hist_counts.size else 1
+for c, (b0, b1) in zip(hist_counts, zip(bin_edges[:-1], bin_edges[1:])):
+    bar = "█" * int((c / max_count) * 25)
+    hist_lines.append(f"{b0:6.1f}–{b1:6.1f} | {bar} {c}")
+
+with st.expander("Recent Distribution (text histogram)"):
+    st.code("\n".join(hist_lines))
+
+st.caption("Note: This quick model uses recent game logs only—no opponent/pace/odds adjustments. Extend the feature set as needed.")
+
+# -------------------------
+# Action row
+# -------------------------
+colA, colB = st.columns([1,1])
+with colA:
+    if st.button("🔁 Refresh Data", use_container_width=True):
+        st.cache_data.clear()
+        st.rerun()
+with colB:
+    st.download_button(
+        label="⬇️ Export Logs (CSV)",
+        data=df_logs.to_csv(index=False),
+        file_name=f"{sport}_{player_name(player)}_{stat_choice}_logs.csv",
+        mime="text/csv",
+        use_container_width=True
+    )
