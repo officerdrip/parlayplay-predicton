@@ -52,7 +52,7 @@ if not API_KEY:
 
 HEADERS = {"Ocp-Apim-Subscription-Key": API_KEY}
 
-# Base URLs per league (✅ Fixed: removed trailing spaces in URLs)
+# Base URLs per league
 BASE = {
     "NBA": {"scores": "https://api.sportsdata.io/v3/nba/scores/json", "stats": "https://api.sportsdata.io/v3/nba/stats/json"},
     "WNBA": {"scores": "https://api.sportsdata.io/v3/wnba/scores/json", "stats": "https://api.sportsdata.io/v3/wnba/stats/json"},
@@ -191,10 +191,9 @@ def infer_team_keys(sport: str, game: Dict) -> Dict:
             "home_key": safe_get(game, "HomeTeam"),
             "away_key": safe_get(game, "AwayTeam"),
         }
-    else:
-        return {
-            "home_display": safe_get(game, "HomeTeam") or safe_get(game, "HomeTeamName"),
-            "away_display": safe_get(game, "AwayTeam") or safe_get(game, "AwayTeamName"),
-            "home_key": safe_get(game, "HomeTeamID") or safe_get(game, "HomeTeam"),
-            "away_key": safe_get(game, "AwayTeamID") or safe_get(game, "AwayTeam"),
-        }
+    return {
+        "home_display": safe_get(game, "HomeTeam") or safe_get(game, "HomeTeamName"),
+        "away_display": safe_get(game, "AwayTeam") or safe_get(game, "AwayTeamName"),
+        "home_key": safe_get(game, "HomeTeamID") or safe_get(game, "HomeTeam"),
+        "away_key": safe_get(game, "AwayTeamID") or safe_get(game, "AwayTeam"),
+    }
