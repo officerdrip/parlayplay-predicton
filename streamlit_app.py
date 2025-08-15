@@ -45,7 +45,6 @@ st.markdown(
 # -------------------------
 # Config / Secrets
 # -------------------------
-# Put your SportsDataIO API key in .streamlit/secrets.toml as SPORTSIO_KEY="..."
 API_KEY = st.secrets.get("SPORTSIO_KEY", os.getenv("SPORTSIO_KEY", ""))
 
 if not API_KEY:
@@ -54,28 +53,32 @@ if not API_KEY:
 
 HEADERS = {"Ocp-Apim-Subscription-Key": API_KEY}
 
-# Base URLs per league (Scores + Stats families)
+# Base URLs per league
 BASE = {
     "NBA": {"scores": "https://api.sportsdata.io/v3/nba/scores/json", "stats": "https://api.sportsdata.io/v3/nba/stats/json"},
+    "WNBA": {"scores": "https://api.sportsdata.io/v3/wnba/scores/json", "stats": "https://api.sportsdata.io/v3/wnba/stats/json"},
     "NFL": {"scores": "https://api.sportsdata.io/v3/nfl/scores/json", "stats": "https://api.sportsdata.io/v3/nfl/stats/json"},
     "MLB": {"scores": "https://api.sportsdata.io/v3/mlb/scores/json", "stats": "https://api.sportsdata.io/v3/mlb/stats/json"},
     "CFB": {"scores": "https://api.sportsdata.io/v3/cfb/scores/json", "stats": "https://api.sportsdata.io/v3/cfb/stats/json"},
     "CBB": {"scores": "https://api.sportsdata.io/v3/cbb/scores/json", "stats": "https://api.sportsdata.io/v3/cbb/stats/json"},
 }
 
-# Which endpoints we’ll call for:
-# - games by date
-# - players by team
-# - player game logs by date (or by season)
+# Endpoints
 ENDPOINTS = {
     "NBA": {
-        "games_by_date": "/GamesByDate/{date}",               # yyyy-mm-dd
-        "players_by_team": "/Players/{team}",                 # team abbr
-        "player_gamelogs_by_date": "/PlayerGameStatsByDate/{date}",  # per date; we'll aggregate a window
-        "season_param_style": "year"  # not used here but left for future
+        "games_by_date": "/GamesByDate/{date}",
+        "players_by_team": "/Players/{team}",
+        "player_gamelogs_by_date": "/PlayerGameStatsByDate/{date}",
+        "season_param_style": "year"
+    },
+    "WNBA": {
+        "games_by_date": "/GamesByDate/{date}",
+        "players_by_team": "/Players/{team}",
+        "player_gamelogs_by_date": "/PlayerGameStatsByDate/{date}",
+        "season_param_style": "year"
     },
     "NFL": {
-        "games_by_date": "/SchedulesBasic/{season}",          # fallback weekly would be ScoresByWeek/{season}/{week}
+        "games_by_date": "/SchedulesBasic/{season}",
         "players_by_team": "/Players/{team}",
         "player_gamelogs_by_date": "/PlayerGameStatsByDate/{date}",
         "season_param_style": "year"
@@ -88,7 +91,7 @@ ENDPOINTS = {
     },
     "CFB": {
         "games_by_date": "/GamesByDate/{date}",
-        "players_by_team": "/PlayersByTeam/{teamid}",         # college keys differ; we’ll handle dynamically
+        "players_by_team": "/PlayersByTeam/{teamid}",
         "player_gamelogs_by_date": "/PlayerGameStatsByDate/{date}",
         "season_param_style": "year"
     },
@@ -100,9 +103,18 @@ ENDPOINTS = {
     },
 }
 
-# Stat field mapping per sport for a simple first version
+# Stat field mapping
 STAT_FIELDS = {
     "NBA": {
+        "Points": "Points",
+        "Rebounds": "Rebounds",
+        "Assists": "Assists",
+        "FG Made": "FieldGoalsMade",
+        "3PT Made": "ThreePointersMade",
+        "Blocks": "BlockedShots",
+        "Steals": "Steals",
+    },
+    "WNBA": {  # same as NBA
         "Points": "Points",
         "Rebounds": "Rebounds",
         "Assists": "Assists",
@@ -124,8 +136,8 @@ STAT_FIELDS = {
         "Home Runs": "HomeRuns",
         "Runs": "Runs",
         "RBIs": "RunsBattedIn",
-        "Strikeouts (Batter)": "Strikeouts",     # hitter K
-        "Strikeouts (Pitcher)": "PitcherStrikeouts"  # may require pitcher-only filter
+        "Strikeouts (Batter)": "Strikeouts",
+        "Strikeouts (Pitcher)": "PitcherStrikeouts"
     },
     "CFB": {
         "Passing Yds": "PassingYards",
@@ -169,15 +181,13 @@ def recent_dates(window_days: int = 30) -> List[str]:
     return [ymd(today - dt.timedelta(days=i)) for i in range(window_days)]
 
 def infer_team_keys(sport: str, game: Dict) -> Dict:
-    """Return dict with display names + IDs/Abbr needed for downstream."""
-    if sport in ("NBA", "NFL", "MLB"):
+    if sport in ("NBA", "WNBA", "NFL", "MLB"):
         return {
             "home_display": safe_get(game, "HomeTeam") or safe_get(game, "HomeTeamName"),
             "away_display": safe_get(game, "AwayTeam") or safe_get(game, "AwayTeamName"),
             "home_key": safe_get(game, "HomeTeam"),
             "away_key": safe_get(game, "AwayTeam"),
         }
-    # College feeds often use TeamID + Team fields
     return {
         "home_display": safe_get(game, "HomeTeam") or safe_get(game, "HomeTeamName"),
         "away_display": safe_get(game, "AwayTeam") or safe_get(game, "AwayTeamName"),
@@ -189,7 +199,6 @@ def player_name(rec: Dict) -> str:
     for k in ("Name", "FullName", "FirstName"):
         if k in rec and rec[k]:
             return rec[k] if k != "FirstName" else f"{rec['FirstName']} {rec.get('LastName','')}".strip()
-    # fallback
     return rec.get("Player", "Unknown")
 
 def extract_stat(rec: Dict, field: str) -> Optional[float]:
@@ -211,7 +220,7 @@ def prob_over(sample: List[float], line: float) -> float:
 # Sidebar: Sport / Date
 # -------------------------
 st.sidebar.markdown("### Sport & Date")
-sport = st.sidebar.selectbox("Sport", ["NBA", "NFL", "MLB", "CFB", "CBB"])
+sport = st.sidebar.selectbox("Sport", ["NBA", "WNBA", "NFL", "MLB", "CFB", "CBB"])
 target_date = st.sidebar.date_input("Game Date", value=dt.date.today())
 window_days = st.sidebar.slider("Recent form window (days)", 7, 60, 30, help="We’ll pull player game logs across this window.")
 
@@ -231,7 +240,6 @@ with st.spinner("Loading games..."):
     if "{date}" in ENDPOINTS[sport]["games_by_date"]:
         url = BASE[sport]["scores"] + ENDPOINTS[sport]["games_by_date"].format(date=ymd(target_date))
     else:
-        # basic season fallback (e.g., NFL SchedulesBasic/{season})
         url = BASE[sport]["scores"] + ENDPOINTS[sport]["games_by_date"].format(season=dt.date.today().year)
     games = api_get(url) or []
 
@@ -239,7 +247,6 @@ if not games:
     st.info("No games found for this selection. Try another date.")
     st.stop()
 
-# Build a selector
 def game_label(g: Dict) -> str:
     home = safe_get(g, "HomeTeam") or safe_get(g, "HomeTeamName") or "HOME"
     away = safe_get(g, "AwayTeam") or safe_get(g, "AwayTeamName") or "AWAY"
@@ -265,7 +272,6 @@ with col_team:
     )
 team_key = keys["away_key"] if "Away" in team_choice else keys["home_key"]
 
-# Different college vs pro endpoints
 players_endpoint = ENDPOINTS[sport]["players_by_team"]
 if "{teamid}" in players_endpoint:
     url_players = BASE[sport]["scores"] + players_endpoint.format(teamid=team_key)
@@ -293,15 +299,14 @@ player_id = player.get("PlayerID") or player.get("GlobalPlayerID") or player.get
 # Stat & Line
 # -------------------------
 st.markdown("### Choose Stat & Line")
-
 valid_stats = STAT_FIELDS[sport]
 stat_choice = st.selectbox("Stat", list(valid_stats.keys()))
 stat_field = valid_stats[stat_choice]
 
-line_value = st.number_input("Prop Line", value=20.5 if sport in ("NBA", "CBB") else 60.5, step=0.5)
+line_value = st.number_input("Prop Line", value=20.5 if sport in ("NBA", "WNBA", "CBB") else 60.5, step=0.5)
 
 # -------------------------
-# Gather recent game logs across a rolling window of dates
+# Gather recent game logs
 # -------------------------
 st.markdown("### Results")
 
@@ -310,7 +315,6 @@ def collect_player_logs_by_date(sport: str, days: int) -> pd.DataFrame:
     for d in recent_dates(days):
         url_logs = BASE[sport]["stats"] + ENDPOINTS[sport]["player_gamelogs_by_date"].format(date=d)
         payload = api_get(url_logs) or []
-        # Filters are league-specific; we’ll filter by PlayerID if present
         for rec in payload:
             pid = rec.get("PlayerID") or rec.get("GlobalPlayerID") or rec.get("ID")
             if pid == player_id:
@@ -324,12 +328,7 @@ if df_logs.empty:
     st.warning("No recent logs found for this player in the selected window. Try expanding the window or pick another player/stat.")
     st.stop()
 
-# Extract series for the chosen stat
-values = []
-for _, r in df_logs.iterrows():
-    v = extract_stat(r.to_dict(), stat_field)
-    if v is not None:
-        values.append(v)
+values = [extract_stat(r.to_dict(), stat_field) for _, r in df_logs.iterrows() if extract_stat(r.to_dict(), stat_field) is not None]
 
 if not values:
     st.warning("This stat isn’t available for the selected player. Try another stat.")
@@ -339,7 +338,6 @@ arr = np.array(values, dtype=float)
 p_over = prob_over(values, line_value)
 p_under = 1.0 - p_over
 
-# Basic summary metrics
 mean_v = float(np.mean(arr))
 median_v = float(np.median(arr))
 stdev_v = float(np.std(arr, ddof=1)) if len(arr) > 1 else 0.0
@@ -367,8 +365,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# Small distribution preview (no external plotting libs; simple text histogram)
-hist_counts, bin_edges = np.histogram(arr, bins=min(12, max(6, int(np.sqrt(len(arr))))))  # Sturges-ish
+hist_counts, bin_edges = np.histogram(arr, bins=min(12, max(6, int(np.sqrt(len(arr))))))
 hist_lines = []
 max_count = hist_counts.max() if hist_counts.size else 1
 for c, (b0, b1) in zip(hist_counts, zip(bin_edges[:-1], bin_edges[1:])):
