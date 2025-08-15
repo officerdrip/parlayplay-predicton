@@ -114,46 +114,4 @@ STAT_FIELDS = {
         "Steals": "Steals",
     },
     "WNBA": {
-        "Points": "Points",
-        "Rebounds": "Rebounds",
-        "Assists": "Assists",
-        "FG Made": "FieldGoalsMade",
-        "3PT Made": "ThreePointersMade",
-        "Blocks": "BlockedShots",
-        "Steals": "Steals",
-    },
-    "NFL": {
-        "Passing Yds": "PassingYards",
-        "Rushing Yds": "RushingYards",
-        "Receiving Yds": "ReceivingYards",
-        "Receptions": "Receptions",
-        "Rush Attempts": "RushingAttempts",
-    },
-    "MLB": {
-        "Hits": "Hits",
-        "Total Bases": "TotalBases",
-        "Home Runs": "HomeRuns",
-        "Runs": "Runs",
-        "RBIs": "RunsBattedIn",
-        "Strikeouts (Batter)": "Strikeouts",
-        "Strikeouts (Pitcher)": "PitcherStrikeouts"
-    },
-    "CFB": {
-        "Passing Yds": "PassingYards",
-        "Rushing Yds": "RushingYards",
-        "Receiving Yds": "ReceivingYards",
-        "Receptions": "Receptions",
-    },
-    "CBB": {
-        "Points": "Points",
-        "Rebounds": "Rebounds",
-        "Assists": "Assists",
-        "3PT Made": "ThreePointersMade",
-    },
-}
-
-# -------------------------
-# Helpers
-# -------------------------
-@st.cache_data(show_spinner=False, ttl=300)
-def api_get(url: str, params: Optional[Dict] = None) -> Optional[List[Dict]]:
+        "Points":
