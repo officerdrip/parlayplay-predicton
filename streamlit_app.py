@@ -19,7 +19,7 @@ st.set_page_config(
 )
 
 # -------------------------
-# Simple CSS polish
+# CSS polish
 # -------------------------
 st.markdown(
     """
@@ -49,10 +49,11 @@ API_KEY = st.secrets.get("SPORTSIO_KEY", os.getenv("SPORTSIO_KEY", ""))
 if not API_KEY:
     st.error("Missing API key. Add SPORTSIO_KEY to `.streamlit/secrets.toml` or as an environment variable.")
     st.stop()
-
 HEADERS = {"Ocp-Apim-Subscription-Key": API_KEY}
 
-# Base URLs per league
+# -------------------------
+# Base URLs + Endpoints
+# -------------------------
 BASE = {
     "NBA": {"scores": "https://api.sportsdata.io/v3/nba/scores/json", "stats": "https://api.sportsdata.io/v3/nba/stats/json"},
     "WNBA": {"scores": "https://api.sportsdata.io/v3/wnba/scores/json", "stats": "https://api.sportsdata.io/v3/wnba/stats/json"},
@@ -62,94 +63,22 @@ BASE = {
     "CBB": {"scores": "https://api.sportsdata.io/v3/cbb/scores/json", "stats": "https://api.sportsdata.io/v3/cbb/stats/json"},
 }
 
-# Endpoints per league
 ENDPOINTS = {
-    "NBA": {
-        "games_by_date": "/GamesByDate/{date}",
-        "players_by_team": "/Players/{team}",
-        "player_gamelogs_by_date": "/PlayerGameStatsByDate/{date}",
-        "season_param_style": "year"
-    },
-    "WNBA": {
-        "games_by_date": "/GamesByDate/{date}",
-        "players_by_team": "/Players/{team}",
-        "player_gamelogs_by_date": "/PlayerGameStatsByDate/{date}",
-        "season_param_style": "year"
-    },
-    "NFL": {
-        "games_by_date": "/SchedulesBasic/{season}",
-        "players_by_team": "/Players/{team}",
-        "player_gamelogs_by_date": "/PlayerGameStatsByDate/{date}",
-        "season_param_style": "year"
-    },
-    "MLB": {
-        "games_by_date": "/GamesByDate/{date}",
-        "players_by_team": "/Players/{team}",
-        "player_gamelogs_by_date": "/PlayerGameStatsByDate/{date}",
-        "season_param_style": "year"
-    },
-    "CFB": {
-        "games_by_date": "/GamesByDate/{date}",
-        "players_by_team": "/PlayersByTeam/{teamid}",
-        "player_gamelogs_by_date": "/PlayerGameStatsByDate/{date}",
-        "season_param_style": "year"
-    },
-    "CBB": {
-        "games_by_date": "/GamesByDate/{date}",
-        "players_by_team": "/PlayersByTeam/{teamid}",
-        "player_gamelogs_by_date": "/PlayerGameStatsByDate/{date}",
-        "season_param_style": "year"
-    },
+    "NBA": {"games_by_date": "/GamesByDate/{date}", "players_by_team": "/Players/{team}", "player_gamelogs_by_date": "/PlayerGameStatsByDate/{date}", "season_param_style": "year"},
+    "WNBA": {"games_by_date": "/GamesByDate/{date}", "players_by_team": "/Players/{team}", "player_gamelogs_by_date": "/PlayerGameStatsByDate/{date}", "season_param_style": "year"},
+    "NFL": {"games_by_date": "/SchedulesBasic/{season}", "players_by_team": "/Players/{team}", "player_gamelogs_by_date": "/PlayerGameStatsByDate/{date}", "season_param_style": "year"},
+    "MLB": {"games_by_date": "/GamesByDate/{date}", "players_by_team": "/Players/{team}", "player_gamelogs_by_date": "/PlayerGameStatsByDate/{date}", "season_param_style": "year"},
+    "CFB": {"games_by_date": "/GamesByDate/{date}", "players_by_team": "/PlayersByTeam/{teamid}", "player_gamelogs_by_date": "/PlayerGameStatsByDate/{date}", "season_param_style": "year"},
+    "CBB": {"games_by_date": "/GamesByDate/{date}", "players_by_team": "/PlayersByTeam/{teamid}", "player_gamelogs_by_date": "/PlayerGameStatsByDate/{date}", "season_param_style": "year"},
 }
 
-# Stat fields per sport
 STAT_FIELDS = {
-    "NBA": {
-        "Points": "Points",
-        "Rebounds": "Rebounds",
-        "Assists": "Assists",
-        "FG Made": "FieldGoalsMade",
-        "3PT Made": "ThreePointersMade",
-        "Blocks": "BlockedShots",
-        "Steals": "Steals",
-    },
-    "WNBA": {
-        "Points": "Points",
-        "Rebounds": "Rebounds",
-        "Assists": "Assists",
-        "FG Made": "FieldGoalsMade",
-        "3PT Made": "ThreePointersMade",
-        "Blocks": "BlockedShots",
-        "Steals": "Steals",
-    },
-    "NFL": {
-        "Passing Yds": "PassingYards",
-        "Rushing Yds": "RushingYards",
-        "Receiving Yds": "ReceivingYards",
-        "Receptions": "Receptions",
-        "Rush Attempts": "RushingAttempts",
-    },
-    "MLB": {
-        "Hits": "Hits",
-        "Total Bases": "TotalBases",
-        "Home Runs": "HomeRuns",
-        "Runs": "Runs",
-        "RBIs": "RunsBattedIn",
-        "Strikeouts (Batter)": "Strikeouts",
-        "Strikeouts (Pitcher)": "PitcherStrikeouts"
-    },
-    "CFB": {
-        "Passing Yds": "PassingYards",
-        "Rushing Yds": "RushingYards",
-        "Receiving Yds": "ReceivingYards",
-        "Receptions": "Receptions",
-    },
-    "CBB": {
-        "Points": "Points",
-        "Rebounds": "Rebounds",
-        "Assists": "Assists",
-        "3PT Made": "ThreePointersMade",
-    },
+    "NBA": {"Points": "Points","Rebounds": "Rebounds","Assists": "Assists","FG Made": "FieldGoalsMade","3PT Made": "ThreePointersMade","Blocks": "BlockedShots","Steals": "Steals"},
+    "WNBA": {"Points": "Points","Rebounds": "Rebounds","Assists": "Assists","FG Made": "FieldGoalsMade","3PT Made": "ThreePointersMade","Blocks": "BlockedShots","Steals": "Steals"},
+    "NFL": {"Passing Yds": "PassingYards","Rushing Yds": "RushingYards","Receiving Yds": "ReceivingYards","Receptions": "Receptions","Rush Attempts": "RushingAttempts"},
+    "MLB": {"Hits": "Hits","Total Bases": "TotalBases","Home Runs": "HomeRuns","Runs": "Runs","RBIs": "RunsBattedIn","Strikeouts (Batter)": "Strikeouts","Strikeouts (Pitcher)": "PitcherStrikeouts"},
+    "CFB": {"Passing Yds": "PassingYards","Rushing Yds": "RushingYards","Receiving Yds": "ReceivingYards","Receptions": "Receptions"},
+    "CBB": {"Points": "Points","Rebounds": "Rebounds","Assists": "Assists","3PT Made": "ThreePointersMade"},
 }
 
 # -------------------------
@@ -185,77 +114,52 @@ def recent_dates(window_days: int = 30) -> List[str]:
 
 def infer_team_keys(sport: str, game: Dict) -> Dict:
     if sport in ("NBA", "WNBA", "NFL", "MLB"):
-        return {
-            "home_display": safe_get(game, "HomeTeam") or safe_get(game, "HomeTeamName"),
-            "away_display": safe_get(game, "AwayTeam") or safe_get(game, "AwayTeamName"),
-            "home_key": safe_get(game, "HomeTeam"),
-            "away_key": safe_get(game, "AwayTeam"),
-        }
-    return {
-        "home_display": safe_get(game, "HomeTeam") or safe_get(game, "HomeTeamName"),
-        "away_display": safe_get(game, "AwayTeam") or safe_get(game, "AwayTeamName"),
-        "home_key": safe_get(game, "HomeTeamID") or safe_get(game, "HomeTeam"),
-        "away_key": safe_get(game, "AwayTeamID") or safe_get(game, "AwayTeam"),
-    }
+        return {"home_display": safe_get(game,"HomeTeam") or safe_get(game,"HomeTeamName"), "away_display": safe_get(game,"AwayTeam") or safe_get(game,"AwayTeamName"), "home_key": safe_get(game,"HomeTeam"), "away_key": safe_get(game,"AwayTeam")}
+    return {"home_display": safe_get(game,"HomeTeam") or safe_get(game,"HomeTeamName"), "away_display": safe_get(game,"AwayTeam") or safe_get(game,"AwayTeamName"), "home_key": safe_get(game,"HomeTeamID") or safe_get(game,"HomeTeam"), "away_key": safe_get(game,"AwayTeamID") or safe_get(game,"AwayTeam")}
 
 def player_name(rec: Dict) -> str:
-    for k in ("Name", "FullName", "FirstName"):
+    for k in ("Name","FullName","FirstName"):
         if k in rec and rec[k]:
-            return rec[k] if k != "FirstName" else f"{rec['FirstName']} {rec.get('LastName','')}".strip()
-    return rec.get("Player", "Unknown")
+            return rec[k] if k!="FirstName" else f"{rec['FirstName']} {rec.get('LastName','')}".strip()
+    return rec.get("Player","Unknown")
 
 def extract_stat(rec: Dict, field: str) -> Optional[float]:
     v = rec.get(field)
-    if v is None:
-        return None
     try:
-        return float(v)
+        return float(v) if v is not None else None
     except Exception:
         return None
 
 def prob_over(sample: List[float], line: float) -> float:
-    if not sample:
-        return 0.0
-    arr = np.array(sample, dtype=float)
+    if not sample: return 0.0
+    arr = np.array(sample,dtype=float)
     return float(np.mean(arr > line))
 
 # -------------------------
-# Sidebar: Sport / Date
+# Sidebar
 # -------------------------
 st.sidebar.markdown("### Sport & Date")
-sport = st.sidebar.selectbox("Sport", ["NBA", "WNBA", "NFL", "MLB", "CFB", "CBB"])
+sport = st.sidebar.selectbox("Sport", ["NBA","WNBA","NFL","MLB","CFB","CBB"])
 target_date = st.sidebar.date_input("Game Date", value=dt.date.today())
-window_days = st.sidebar.slider("Recent form window (days)", 7, 60, 30)
-
+window_days = st.sidebar.slider("Recent form window (days)",7,60,30)
 st.sidebar.markdown("---")
 st.sidebar.caption("Tip: Store your SportsDataIO key in `.streamlit/secrets.toml` as `SPORTSIO_KEY`.")
 
 # -------------------------
-# Pull Games
+# Pull games
 # -------------------------
 st.markdown("## 🎯 ParlayPlays • Player Prop Predictor")
-st.markdown(
-    "<div class='ghost'>Select a sport, pick a game, choose a player & stat, then enter a line to estimate Over/Under probability.</div>",
-    unsafe_allow_html=True,
-)
+st.markdown("<div class='ghost'>Select a sport, pick a game, choose a player & stat, then enter a line to estimate Over/Under probability.</div>", unsafe_allow_html=True)
 
 with st.spinner("Loading games..."):
-    try:
-        if "{date}" in ENDPOINTS[sport]["games_by_date"]:
-            url = BASE[sport]["scores"] + ENDPOINTS[sport]["games_by_date"].format(date=ymd(target_date))
-        else:
-            url = BASE[sport]["scores"] + ENDPOINTS[sport]["games_by_date"].format(season=dt.date.today().year)
-        games = api_get(url) or []
-    except Exception as e:
-        st.error(f"Could not fetch games: {e}")
-        games = []
+    if "{date}" in ENDPOINTS[sport]["games_by_date"]:
+        url = BASE[sport]["scores"] + ENDPOINTS[sport]["games_by_date"].format(date=ymd(target_date))
+    else:
+        url = BASE[sport]["scores"] + ENDPOINTS[sport]["games_by_date"].format(season=dt.date.today().year)
+    games = api_get(url) or []
 
 if not games:
-    st.info("No games found for this selection. Try another date or check API access.")
+    st.info("No games found. Check date or API access.")
     st.stop()
 
-# -------------------------
-# (rest of app remains unchanged)
-# -------------------------
-# The rest of your Streamlit code (game selection, player roster, stat input, probability calculation, display)
-# works as-is with WNBA added. Make sure BASE, ENDPOINTS, and STAT_FIELDS include "WNBA" as above.
+def game_lab_
